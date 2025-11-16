@@ -162,7 +162,3 @@ This project is licensed under the ISC License - see the LICENSE file for detail
 ---
 
 **Built with ❤️ for DUT Student Athletes**
-
-- Professional formatting
-
-You can save this as `README.md` in your project root and push it to GitHub!
