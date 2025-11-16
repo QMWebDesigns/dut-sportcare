@@ -33,7 +33,8 @@ export function Router({ children }: RouterProps) {
   return <>{matchedRoute?.props.element || null}</>;
 }
 
-export function Route({ element }: RouteProps) {
+// FIX: Add path prop to Route component
+export function Route({ path, element }: RouteProps) {
   return <>{element}</>;
 }
 
