@@ -33,16 +33,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      console.log('🔍 Fetching profile for user:', userId);
+      
+      // Select specific columns instead of * to avoid serialization issues
+      const { data, error, status, count } = await supabase
         .from('users')
-        .select('*')
+        .select('id, full_name, email, role, profile_pic_url, sport, specialization, phone, student_number, created_at, updated_at')
         .eq('id', userId)
         .maybeSingle();
 
-      if (error) throw error;
-      setProfile(data);
+      console.log('📊 Profile fetch response:', { 
+        data, 
+        error, 
+        status, 
+        count,
+        hasData: !!data 
+      });
+
+      if (error) {
+        console.error('❌ Profile fetch error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+      
+      if (data) {
+        console.log('✅ Profile data received:', data);
+        setProfile(data);
+      } else {
+        console.log('⚠️ No profile data found for user:', userId);
+        setProfile(null);
+      }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('💥 Error fetching profile:', error);
       setProfile(null);
     }
   };
@@ -54,21 +80,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    console.log('🔄 Initializing auth...');
+    
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('📋 Initial session:', session);
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
+        console.log('👤 User found, fetching profile...');
         fetchProfile(session.user.id);
+      } else {
+        console.log('👤 No user in session');
+        setProfile(null);
       }
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔄 Auth state changed:', event, session);
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
+        console.log('👤 User authenticated, fetching profile...');
         fetchProfile(session.user.id);
       } else {
+        console.log('👤 User signed out');
         setProfile(null);
       }
       setLoading(false);
@@ -79,12 +115,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log('🔐 Signing in user:', email);
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      
+      console.log('📋 Sign in response:', { data, error });
       return { error };
     } catch (error) {
+      console.error('💥 Sign in error:', error);
       return { error: error as Error };
     }
   };
@@ -102,40 +142,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   ) => {
     try {
+      console.log('📝 Starting sign up process for:', email, userData);
+      
+      // 1. Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('No user returned from signup');
+      console.log('📋 Auth signup response:', { authData, authError });
 
-      const { error: profileError } = await supabase
+      if (authError) {
+        console.error('❌ Auth signup error:', authError);
+        throw authError;
+      }
+      
+      if (!authData.user) {
+        console.error('❌ No user returned from signup');
+        throw new Error('No user returned from signup');
+      }
+
+      console.log('✅ Auth user created:', authData.user.id);
+
+      // 2. Create user profile in public.users table
+      const profileData = {
+        id: authData.user.id,
+        email,
+        full_name: userData.full_name,
+        role: userData.role,
+        sport: userData.sport || null,
+        specialization: userData.specialization || null,
+        student_number: userData.student_number || null,
+        phone: userData.phone || null,
+      };
+
+      console.log('📝 Creating user profile:', profileData);
+
+      const { data: profileResult, error: profileError } = await supabase
         .from('users')
-        .insert({
-          id: authData.user.id,
-          email,
-          full_name: userData.full_name,
-          role: userData.role,
-          sport: userData.sport,
-          specialization: userData.specialization,
-          student_number: userData.student_number,
-          phone: userData.phone,
-        });
+        .insert(profileData)
+        .select()
+        .single();
 
-      if (profileError) throw profileError;
+      console.log('📋 Profile creation response:', { profileResult, profileError });
 
+      if (profileError) {
+        console.error('❌ Profile creation error:', profileError);
+        
+        // If profile creation fails, delete the auth user to clean up
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        throw profileError;
+      }
+
+      console.log('✅ User registration completed successfully');
       return { error: null };
     } catch (error) {
+      console.error('💥 Sign up error:', error);
       return { error: error as Error };
     }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    setSession(null);
+    try {
+      console.log('🚪 Signing out user...');
+      await supabase.auth.signOut();
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      console.log('✅ User signed out successfully');
+    } catch (error) {
+      console.error('💥 Sign out error:', error);
+    }
   };
 
   const value = {
